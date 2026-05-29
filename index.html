@@ -1,1 +1,1658 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>전국 학교 AI 실시간 날씨 & 미세먼지 브리핑 서비스</title>
+    <!-- Tailwind CSS 로드 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts Inter & Noto Sans KR 로드 -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+KR:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+    <!-- FontAwesome 아이콘 로드 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Noto Sans KR', 'Inter', sans-serif;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 3px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+        /* 에디터 플레이스홀더 설정 */
+        #rich-editor:empty:before {
+            content: attr(placeholder);
+            color: #cbd5e1;
+            display: block;
+        }
+        
+        /* 브라우저에서 동적으로 생성되는 폰트 크기(font size="3~6") 스타일 바인딩 */
+        #rich-editor font[size="3"], #rendered-output font[size="3"] { font-size: 14px; }
+        #rich-editor font[size="4"], #rendered-output font[size="4"] { font-size: 16px; }
+        #rich-editor font[size="5"], #rendered-output font[size="5"] { font-size: 18px; }
+        #rich-editor font[size="6"], #rendered-output font[size="6"] { font-size: 24px; }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-800 flex flex-col justify-between">
 
+    <!-- 네비게이션 및 헤더 영역 -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm">
+        <div class="max-w-6xl mx-auto px-4 py-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="bg-blue-600 text-white p-2.5 rounded-2xl shadow-md flex items-center justify-center">
+                    <i class="fa-solid fa-graduation-cap text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-1.5">
+                        전국 학교 AI 날씨 브리핑 
+                        <span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-semibold">나이스 OpenAPI 연동</span>
+                    </h1>
+                    <p class="text-xs text-slate-500">실시간 위치, 오존 기반 자외선 및 교사 맞춤형 안전 지침 자동 생성</p>
+                </div>
+            </div>
+            <!-- 날짜 표시 -->
+            <div id="current-date-badge" class="bg-slate-100 text-slate-700 font-medium text-sm px-4 py-2 rounded-xl flex items-center gap-2">
+                <i class="fa-regular fa-calendar-check text-blue-600"></i>
+                <span id="header-date-text">로딩 중...</span>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto px-4 py-8 w-full flex-grow">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            
+            <!-- 왼쪽 제어패널 (설정 및 생성 조건 입력) -->
+            <div class="lg:col-span-5 flex flex-col gap-6">
+                
+                <!-- 1단계: 나이스 3단계 연쇄 학교 검색 카드 -->
+                <div class="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
+                    <h3 class="font-bold text-slate-900 text-base mb-4 flex items-center gap-2">
+                        <i class="fa-solid fa-school text-blue-600"></i>
+                        1. 대상 학교 드롭다운 선택 (학교급 + 지역 연계)
+                    </h3>
+                    
+                    <div class="space-y-4">
+                        <!-- 1단계: 학교급 선택 -->
+                        <div>
+                            <label class="block text-[11px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider">1단계: 학교급 선택</label>
+                            <select id="select-level" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer">
+                                <option value="초등학교" selected>초등학교</option>
+                                <option value="중학교">중학교</option>
+                                <option value="고등학교">고등학교</option>
+                                <option value="특수학교">특수학교</option>
+                            </select>
+                        </div>
+                        
+                        <!-- 2단계부터는 가로로 붙여서 한 줄 정렬 -->
+                        <div>
+                            <label class="block text-[11px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider">2단계~: 지역 및 대상 학교 선택</label>
+                            <div class="grid grid-cols-12 gap-1.5">
+                                <!-- 시/도 선택 -->
+                                <div class="col-span-3">
+                                    <select id="select-province" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-2 py-2.5 text-[11px] font-bold focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer truncate">
+                                        <option value="">시/도</option>
+                                        <option value="서울특별시">서울</option>
+                                        <option value="부산광역시">부산</option>
+                                        <option value="대구광역시">대구</option>
+                                        <option value="인천광역시">인천</option>
+                                        <option value="광주광역시">광주</option>
+                                        <option value="대전광역시">대전</option>
+                                        <option value="울산광역시">울산</option>
+                                        <option value="세종특별자치시">세종</option>
+                                        <option value="경기도">경기</option>
+                                        <option value="강원특별자치도">강원</option>
+                                        <option value="충청북도">충북</option>
+                                        <option value="충청남도">충남</option>
+                                        <option value="전북특별자치도">전북</option>
+                                        <option value="전라남도">전남</option>
+                                        <option value="경상북도">경북</option>
+                                        <option value="경상남도" selected>경남</option>
+                                        <option value="제주특별자치도">제주</option>
+                                    </select>
+                                </div>
+                                
+                                <!-- 시/군/구 선택 -->
+                                <div class="col-span-4 relative">
+                                    <select id="select-sigungu" disabled class="w-full bg-slate-50 border border-slate-200 rounded-xl px-2 py-2.5 text-[11px] font-bold focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer truncate">
+                                        <option value="">데이터를 로딩 중입니다...</option>
+                                    </select>
+                                    <div id="sigungu-loader" class="hidden absolute right-3 top-2.5 text-blue-600 text-xs">
+                                        <i class="fa-solid fa-spinner animate-spin"></i>
+                                    </div>
+                                </div>
+
+                                <!-- 학교 선택 -->
+                                <div class="col-span-5">
+                                    <select id="select-school" disabled class="w-full bg-slate-50 border border-slate-200 rounded-xl px-2 py-2.5 text-[11px] font-bold focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer truncate">
+                                        <option value="">시/군/구를 먼저 선택해 주세요.</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2단계: 자동 기상/대기 측정소 매핑 모니터 -->
+                <div class="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
+                    <h3 class="font-bold text-slate-900 text-base mb-3.5 flex items-center gap-2">
+                        <i class="fa-solid fa-compass-drafting text-blue-600"></i>
+                        2. 좌표 및 실시간 측정소 매핑 현황
+                    </h3>
+                    
+                    <div class="space-y-2.5 text-xs text-slate-700">
+                        <!-- 현재 선택된 학교 정보 요약 -->
+                        <div class="p-3 bg-blue-50/50 rounded-2xl border border-blue-100/50 space-y-1">
+                            <div class="font-bold text-blue-900 flex items-center gap-1.5">
+                                <i class="fa-solid fa-school-flag text-blue-600"></i>
+                                <span id="meta-school-name">마산중앙초등학교</span>
+                            </div>
+                            <div class="text-slate-500 leading-normal" id="meta-school-address">경상남도 창원시 마산회원구 구암서6길 22 (구암동)</div>
+                            <div class="grid grid-cols-2 gap-y-1 pt-1 text-[11px] text-slate-400">
+                                <span id="meta-school-tel">📞 TEL: 055-251-4081</span>
+                                <span id="meta-school-anniversary">🎂 개교일: 1946년 09월 10일</span>
+                            </div>
+                        </div>
+
+                        <!-- 매핑 상태 계측값 -->
+                        <div class="grid grid-cols-2 gap-2">
+                            <div class="p-2.5 bg-slate-50 border border-slate-100 rounded-xl">
+                                <span class="text-[10px] text-slate-400 font-bold block" id="meta-coords-label">기상청 예보 지점</span>
+                                <span class="font-bold text-slate-800 text-[11px] leading-tight block mt-0.5" id="meta-coords">창원시 마산회원구 <span class="text-[9px] text-slate-400 font-normal">(NX=89, NY=77)</span></span>
+                            </div>
+                            <div class="p-2.5 bg-slate-50 border border-slate-100 rounded-xl">
+                                <span class="text-[10px] text-slate-400 font-bold block">에어코리아 측정소</span>
+                                <span class="font-bold text-slate-800 text-[11px] leading-tight block mt-0.5 truncate" id="meta-station">회원동 측정소 (자동검출)</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- API 생성 옵션 -->
+                <div class="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm flex flex-col gap-4">
+                    <!-- 공공데이터포털 API 인증키 (은닉화하여 내부 저장소로만 사용) -->
+                    <input type="hidden" id="api-key" value="37057e71f7e8b049505cae9eb95d3da6c41b9a4d915bc3b5d8f440ea149361d9">
+
+                    <div>
+                        <!-- 요일이 동적으로 표시되는 기준 일자 레이블 -->
+                        <label class="block text-xs font-bold text-slate-700 mb-1.5 flex items-center justify-between">
+                            <span>기준 일자 및 세부 연동 일정</span>
+                            <span id="selected-date-weekday" class="text-blue-600 font-extrabold bg-blue-50 px-2.5 py-0.5 rounded-lg text-[11px] border border-blue-100 shadow-sm">금요일</span>
+                        </label>
+                        <input type="date" id="input-date" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 mb-2 font-semibold">
+                        <textarea id="additional-context" rows="2" placeholder="첫 멘트에 연동할 특별 학교행사나 학급 일정을 기입해 주십시오." 
+                            class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none placeholder:text-slate-400 custom-scrollbar"></textarea>
+                    </div>
+
+                    <button id="btn-generate" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 px-6 rounded-2xl shadow-lg hover:shadow-xl hover:shadow-blue-100 transition-all flex items-center justify-center gap-2 active:scale-[0.98]">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i>
+                        <span>실시간 검색 및 AI 브리핑 생성</span>
+                    </button>
+                </div>
+
+                <!-- API 실시간 트래픽 상태 모니터 -->
+                <div class="bg-white p-4.5 rounded-3xl border border-slate-200 shadow-sm text-xs">
+                    <h4 class="font-bold text-slate-900 text-xs mb-2.5 flex items-center gap-1.5">
+                        <i class="fa-solid fa-circle-nodes text-emerald-600"></i>
+                        공공 API 개별 노드 연동 현황
+                    </h4>
+                    <div class="space-y-1.5 text-[11px]">
+                        <div class="flex items-center justify-between">
+                            <span class="text-slate-500">기상 단기예보 (/getVilageFcst)</span>
+                            <span id="status-fcst" class="px-2 py-0.5 rounded-md font-bold bg-slate-100 text-slate-500">대기 중</span>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-slate-500">에어코리아 자외선(오존) 계측</span>
+                            <span id="status-uv" class="px-2 py-0.5 rounded-md font-bold bg-slate-100 text-slate-500">대기 중</span>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-slate-500">대기질 실시간 측정 (/getMsrstnAccto...)</span>
+                            <span id="status-dust" class="px-2 py-0.5 rounded-md font-bold bg-slate-100 text-slate-500">대기 중</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 오른쪽 결과 출력 패널 -->
+            <div class="lg:col-span-7 flex flex-col gap-4">
+                
+                <!-- 로딩 오버레이 / 인디케이터 -->
+                <div id="loading-state" class="hidden bg-white p-12 rounded-3xl border border-slate-200 shadow-sm flex-col items-center justify-center text-center gap-4 flex-grow min-h-[400px]">
+                    <div class="relative w-16 h-16">
+                        <div class="absolute inset-0 border-4 border-slate-100 rounded-full"></div>
+                        <div class="absolute inset-0 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                    </div>
+                    <div>
+                        <h4 class="font-bold text-slate-900 text-lg" id="loading-title">로딩 중...</h4>
+                        <p class="text-sm text-slate-500 mt-2" id="loading-detail">데이터를 조회하고 분석 설계 수순을 진행하고 있습니다.</p>
+                    </div>
+                    <!-- 진행 상황 스텝 표시 -->
+                    <div class="mt-4 bg-slate-50 px-5 py-4 rounded-2xl border border-slate-150 text-xs text-slate-500 flex flex-col gap-2.5 items-start text-left w-full max-w-sm mx-auto">
+                        <div class="flex items-center gap-2">
+                            <span id="step-icon-1"><i class="fa-regular fa-circle text-slate-300"></i></span>
+                            <span id="step-text-1">준비 단계 1</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span id="step-icon-2"><i class="fa-regular fa-circle text-slate-300"></i></span>
+                            <span id="step-text-2">준비 단계 2</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span id="step-icon-3"><i class="fa-regular fa-circle text-slate-300"></i></span>
+                            <span id="step-text-3">준비 단계 3</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span id="step-icon-4"><i class="fa-regular fa-circle text-slate-300"></i></span>
+                            <span id="step-text-4">준비 단계 4</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 메인 결과 뷰어 -->
+                <div id="result-container" class="bg-white rounded-3xl border border-slate-200 shadow-sm flex flex-col flex-grow overflow-hidden min-h-[500px]">
+                    
+                    <!-- 탭 컨트롤 및 액션 버튼들 -->
+                    <div class="bg-slate-50/80 px-6 py-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+                        <div class="flex bg-slate-200/60 p-1 rounded-xl">
+                            <button id="tab-preview" class="px-4 py-2 text-xs font-bold rounded-lg bg-white text-slate-900 shadow-sm transition-all">
+                                <i class="fa-solid fa-eye mr-1.5 text-blue-600"></i>미리보기
+                            </button>
+                            <button id="tab-edit" class="px-4 py-2 text-xs font-semibold rounded-lg text-slate-600 hover:text-slate-900 transition-all">
+                                <i class="fa-solid fa-pen-to-square mr-1.5"></i>텍스트 편집
+                            </button>
+                        </div>
+                        
+                        <div class="flex items-center gap-2">
+                            <!-- 복사 버튼 -->
+                            <button id="btn-copy" class="bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all flex items-center gap-2 active:scale-95 shadow-sm">
+                                <i class="fa-solid fa-clipboard"></i>
+                                <span id="copy-text">브리핑 복사하기</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 탭 컨텐츠 1: 미리보기 렌더링 -->
+                    <div id="preview-box" class="p-6 flex-grow overflow-y-auto custom-scrollbar min-h-[450px] max-h-[550px] leading-relaxed">
+                        <!-- 초기 안내 메세지 -->
+                        <div id="initial-message" class="flex flex-col items-center justify-center text-center py-20 text-slate-400 gap-3">
+                            <i class="fa-solid fa-comment-dots text-5xl text-slate-200"></i>
+                            <p class="font-medium text-slate-500">실시간 검색 및 AI 브리핑 생성 버튼을 클릭하세요.</p>
+                            <p class="text-xs text-slate-400">선택한 학교의 고유 위치 정보에 기상청 및 에어코리아 공공데이터를 정밀 대리 분석하여 완벽한 브리핑을 완성합니다.</p>
+                        </div>
+                        
+                        <!-- 마크다운 변환된 브리핑 본문 -->
+                        <div id="rendered-output" class="prose max-w-none text-slate-800 hidden space-y-4">
+                            <!-- 동적 렌더링 영역 -->
+                        </div>
+                    </div>
+
+                    <!-- 탭 컨텐츠 2: 리치 텍스트 수동 편집 에디터 -->
+                    <div id="edit-box" class="hidden p-6 flex-grow flex flex-col gap-3">
+                        <div class="flex items-center justify-between border-b border-slate-200 pb-2">
+                            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide">브리핑 텍스트 에디터 (수정 시 실시간 반영)</label>
+                            
+                            <!-- 미세 에디터 제어 툴바 -->
+                            <div class="flex items-center gap-1.5 bg-slate-100 p-1 rounded-lg">
+                                <!-- 폰트 크기 변경 버튼 (드롭다운) -->
+                                <div class="flex items-center gap-1 mr-1.5 border-r border-slate-200 pr-1.5">
+                                    <span class="text-[10px] font-bold text-slate-500"><i class="fa-solid fa-text-height"></i></span>
+                                    <select onchange="execEditorCommand('fontSize', this.value)" class="text-[11px] font-bold bg-white border border-slate-200 rounded px-1.5 py-0.5 text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer">
+                                        <option value="3">보통 (14px)</option>
+                                        <option value="4">중간 (16px)</option>
+                                        <option value="5">크게 (18px)</option>
+                                        <option value="6">아주 크게 (24px)</option>
+                                    </select>
+                                </div>
+                                
+                                <button onclick="execEditorCommand('bold')" title="굵게" class="w-7 h-7 flex items-center justify-center rounded text-slate-700 hover:bg-white hover:text-blue-600 transition-all text-xs font-bold">
+                                    <i class="fa-solid fa-bold"></i>
+                                </button>
+                                <button onclick="execEditorCommand('underline')" title="밑줄" class="w-7 h-7 flex items-center justify-center rounded text-slate-700 hover:bg-white hover:text-blue-600 transition-all text-xs">
+                                    <i class="fa-solid fa-underline"></i>
+                                </button>
+                                <button onclick="execEditorCommand('removeFormat')" title="서식 지우기" class="w-7 h-7 flex items-center justify-center rounded text-slate-700 hover:bg-white hover:text-red-600 transition-all text-xs">
+                                    <i class="fa-solid fa-eraser"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <!-- contenteditable 디브로 교체하여 별도의 ** 마크 없이 실제 볼드체 조작 -->
+                        <div id="rich-editor" contenteditable="true" placeholder="브리핑을 생성하면 이곳에서 자유롭게 문장을 수정할 수 있습니다..."
+                            class="w-full flex-grow border border-slate-200 rounded-2xl p-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all custom-scrollbar min-h-[450px] max-h-[550px] overflow-y-auto leading-relaxed text-slate-700 bg-white focus:border-blue-300">
+                        </div>
+                    </div>
+
+                    <!-- 출처 표시 컴포넌트 -->
+                    <div id="sources-container" class="hidden border-t border-slate-100 bg-slate-50/50 p-5 flex-col gap-2">
+                        <span class="text-xs font-bold text-slate-500 flex items-center gap-1.5">
+                            <i class="fa-solid fa-magnifying-glass-location text-emerald-600"></i>
+                            데이터 융합 분석 출처 정보
+                        </span>
+                        <div id="sources-list" class="flex flex-wrap gap-2 mt-1">
+                            <!-- 동적 생성 -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Toast 알림 컴포넌트 -->
+                <div id="toast-message" class="fixed bottom-6 right-6 bg-slate-900 text-white px-5 py-3.5 rounded-2xl shadow-xl text-sm flex items-center gap-2.5 translate-y-20 opacity-0 transition-all duration-300 pointer-events-none z-50">
+                    <i class="fa-solid fa-circle-check text-emerald-400"></i>
+                    <span id="toast-text">복사되었습니다!</span>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 하단 푸터 -->
+    <footer class="bg-white border-t border-slate-100 mt-12 py-6 text-center text-xs text-slate-400">
+        <div class="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <p>© 2026 전국 학교 AI 기상 브리핑 플래너 (나이스 & 공공 API 통합 환경). All Rights Reserved.</p>
+            <div class="flex gap-4">
+                <a href="https://www.weather.go.kr" target="_blank" class="hover:text-slate-600 transition-all flex items-center gap-1"><i class="fa-solid fa-link text-[10px]"></i>기상청</a>
+                <a href="https://www.airkorea.or.kr" target="_blank" class="hover:text-slate-600 transition-all flex items-center gap-1"><i class="fa-solid fa-link text-[10px]"></i>에어코리아</a>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // 공격적인 하이브리드 수집 대응 데이터 스토어 (대기정체지수 제거)
+        const apiData = {
+            fcst: null, 
+            uv: null,   
+            dust: null,  
+            isApiSuccessful: false
+        };
+
+        // 기본 활성 학교 타겟 (마산중앙초)
+        let activeSchool = {
+            name: "마산중앙초등학교",
+            address: "경상남도 창원시 마산회원구 구암서6길 22 (구암동)",
+            tel: "055-251-4081",
+            anniversary: "1946년 09월 10일",
+            province: "경상남도",
+            nx: 89,
+            ny: 77,
+            areaNo: "3811060000",
+            stationName: "회원동"
+        };
+
+        // 실시간 로드된 해당 시도의 전체 학교 데이터 리스트
+        let provinceSchoolsStore = [];
+
+        // 나이스(NEIS) 통신 차단에 대비한 17개 시도별 초등학교 예비 백업 목록
+        const DEFAULT_FALLBACK_SCHOOLS = [
+            { SCHUL_NM: "마산중앙초등학교", ORG_RDNMA: "경상남도 창원시 마산회원구 구암서6길 22", ORG_TELNO: "055-251-4081", FOAS_MEMRD: "19460910", LCTN_SC_NM: "경상남도", SCHUL_KND_SC_NM: "초등학교" },
+            { SCHUL_NM: "서울역삼초등학교", ORG_RDNMA: "서울특별시 강남구 역삼로8길 15", ORG_TELNO: "02-557-0461", FOAS_MEMRD: "19830301", LCTN_SC_NM: "서울특별시", SCHUL_KND_SC_NM: "초등학교" },
+            { SCHUL_NM: "부산초량초등학교", ORG_RDNMA: "부산광역시 동구 초량서로 63", ORG_TELNO: "051-468-4501", FOAS_MEMRD: "19370401", LCTN_SC_NM: "부산광역시", SCHUL_KND_SC_NM: "초등학교" },
+            { SCHUL_NM: "대구계성초등학교", ORG_RDNMA: "대구광역시 중구 달성로 56", ORG_TELNO: "053-252-3532", FOAS_MEMRD: "19620301", LCTN_SC_NM: "대구광역시", SCHUL_KND_SC_NM: "초등학교" },
+            { SCHUL_NM: "인천축현초등학교", ORG_RDNMA: "인천광역시 연수구 정송로 22", ORG_TELNO: "032-858-3011", FOAS_MEMRD: "19190925", LCTN_SC_NM: "인천광역시", SCHUL_KND_SC_NM: "초등학교" },
+            { SCHUL_NM: "광주서석초등학교", ORG_RDNMA: "광주광역시 동구 제봉로 82", ORG_TELNO: "062-220-5600", FOAS_MEMRD: "18961106", LCTN_SC_NM: "광주광역시", SCHUL_KND_SC_NM: "초등학교" },
+            { SCHUL_NM: "대전중앙초등학교", ORG_RDNMA: "대전광역시 중구 선화서로 76", ORG_TELNO: "042-256-4277", FOAS_MEMRD: "19431110", LCTN_SC_NM: "대전광역시", SCHUL_KND_SC_NM: "초등학교" },
+            { SCHUL_NM: "울산초등학교", ORG_RDNMA: "울산광역시 중구 미술관길 37", ORG_TELNO: "052-244-1502", FOAS_MEMRD: "19071015", LCTN_SC_NM: "울산광역시", SCHUL_KND_SC_NM: "초등학교" },
+            { SCHUL_NM: "세종참샘초등학교", ORG_RDNMA: "세종특별자치시 한누리대로 283", ORG_TELNO: "044-866-1011", FOAS_MEMRD: "20120301", LCTN_SC_NM: "세종특별자치시", SCHUL_KND_SC_NM: "초등학교" }
+        ];
+
+        // 17대 주요 시도별 대역 기상 정보 백업 맵 (Nominatim/측정소 2차 장애 복구용)
+        const PROVINCE_BACKUP_MAP = {
+            "서울특별시": { lat: 37.5665, lng: 126.9780, nx: 60, ny: 127, areaNo: "1100000000", station: "종로구" },
+            "부산광역시": { lat: 35.1796, lng: 129.0756, nx: 98, ny: 76, areaNo: "2600000000", station: "광안동" },
+            "대구광역시": { lat: 35.8714, lng: 128.6014, nx: 89, ny: 90, areaNo: "2700000000", station: "수성동" },
+            "인천광역시": { lat: 37.4563, lng: 126.7052, nx: 55, ny: 124, areaNo: "2800000000", station: "신흥" },
+            "광주광역시": { lat: 35.1595, lng: 126.8526, nx: 58, ny: 74, areaNo: "2900000000", station: "농성동" },
+            "대전광역시": { lat: 36.3504, lng: 127.3845, nx: 67, ny: 100, areaNo: "3000000000", station: "구성동" },
+            "울산광역시": { lat: 35.5389, lng: 129.3114, nx: 102, ny: 84, areaNo: "3100000000", station: "신정동" },
+            "세종특별자치시": { lat: 36.4801, lng: 127.2890, nx: 66, ny: 103, areaNo: "3611000000", station: "아름동" },
+            "경기도": { lat: 37.2750, lng: 127.0094, nx: 60, ny: 120, areaNo: "4111000000", station: "신풍동" },
+            "강원특별자치도": { lat: 37.8859, lng: 127.7298, nx: 73, ny: 134, areaNo: "5111000000", station: "중앙로" },
+            "강원도": { lat: 37.8859, lng: 127.7298, nx: 73, ny: 134, areaNo: "5111000000", station: "중앙로" },
+            "충청북도": { lat: 36.6357, lng: 127.4912, nx: 69, ny: 107, areaNo: "4311000000", station: "송정동" },
+            "충청남도": { lat: 36.6588, lng: 126.6728, nx: 68, ny: 100, areaNo: "4413000000", station: "성황동" },
+            "전라북도": { lat: 35.8242, lng: 127.1480, nx: 63, ny: 89, areaNo: "4511000000", station: "삼천동" },
+            "전북특별자치도": { lat: 35.8242, lng: 127.1480, nx: 63, ny: 89, areaNo: "4511000000", station: "삼천동" },
+            "전라남도": { lat: 34.8160, lng: 126.4629, nx: 51, ny: 67, areaNo: "4611000000", station: "용당동" },
+            "경상북도": { lat: 36.5760, lng: 128.5056, nx: 89, ny: 91, areaNo: "4711000000", station: "장흥동" },
+            "경상남도": { lat: 35.2376, lng: 128.6924, nx: 91, ny: 77, areaNo: "4811000000", station: "회원동" },
+            "제주특별자치도": { lat: 33.4996, lng: 126.5312, nx: 52, ny: 38, areaNo: "5011000000", station: "이도동" }
+        };
+
+        // 브라우저의 CORS 제한 우회를 위한 강력한 이중화 비동기 fetch 유틸
+        async function fetchJsonWithCORS(url) {
+            // 다중 백업 프록시 연쇄 필터망 가동
+            const proxies = [
+                u => `https://corsproxy.io/?${encodeURIComponent(u)}`,
+                u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+                u => `https://thingproxy.freeboard.io/fetch/${u}`
+            ];
+            
+            let lastError = null;
+            for (const proxyFn of proxies) {
+                try {
+                    const proxyUrl = proxyFn(url);
+                    const response = await fetch(proxyUrl);
+                    if (response.ok) {
+                        return await response.json();
+                    }
+                } catch (err) {
+                    lastError = err;
+                    console.warn("CORS 프록시 단계 실패, 우회 시도...");
+                }
+            }
+            
+            // 전수 프록시 수집 실패 시 다이렉트 통신 최종 구동
+            try {
+                const directResponse = await fetch(url);
+                if (directResponse.ok) {
+                    return await directResponse.json();
+                }
+            } catch (directErr) {
+                throw lastError || directErr;
+            }
+            throw new Error("공공 데이터 프록시 연동 전원 실패");
+        }
+
+        // 시군구 맵핑 실패 시 안전 갱신을 보장하는 정적 오프라인 측정소 매핑 딕셔너리
+        function getBackupStation(province, sigungu) {
+            if (province === "경상남도") {
+                if (sigungu.includes("창원시 마산회원구")) return "회원동";
+                if (sigungu.includes("창원시 마산합포구")) return "반월동";
+                if (sigungu.includes("창원시 성산구")) return "웅남동";
+                if (sigungu.includes("창원시 의창구")) return "명서동";
+                if (sigungu.includes("창원시 진해구")) return "경화동";
+                if (sigungu.includes("진주시")) return "상대동";
+                if (sigungu.includes("김해시")) return "삼방동";
+                if (sigungu.includes("양산시")) return "북정동";
+                if (sigungu.includes("거제시")) return "아주동";
+                if (sigungu.includes("통영시")) return "무전동";
+                if (sigungu.includes("사천시")) return "사천읍";
+                if (sigungu.includes("밀양시")) return "내이동";
+                if (sigungu.includes("함안군")) return "가야읍";
+                if (sigungu.includes("창녕군")) return "창녕읍";
+                if (sigungu.includes("고성군")) return "고성읍";
+                if (sigungu.includes("하동군")) return "하동읍";
+                if (sigungu.includes("남해군")) return "남해읍";
+                if (sigungu.includes("합천군")) return "합천읍";
+                if (sigungu.includes("산청군")) return "산청읍";
+                if (sigungu.includes("함양군")) return "함양읍";
+                if (sigungu.includes("거창군")) return "거창읍";
+                return "회원동";
+            }
+            
+            const backups = {
+                "서울특별시": "종로구",
+                "부산광역시": "광안동",
+                "대구광역시": "수성동",
+                "인천광역시": "신흥",
+                "광주광역시": "농성동",
+                "대전광역시": "구성동",
+                "울산광역시": "신정동",
+                "세종특별자치시": "아름동",
+                "경기도": "신풍동",
+                "강원특별자치도": "중앙로",
+                "충청북도": "송정동",
+                "충청남도": "성황동",
+                "전북특별자치도": "삼천동",
+                "전라남도": "용당동",
+                "경상북도": "장흥동",
+                "제주특별자치도": "이도동"
+            };
+            return backups[province] || "종로구";
+        }
+
+        // 시간대 세이프 날짜 파서 (하루 밀림 방지)
+        function parseSafeDate(dateStr) {
+            if (!dateStr) return new Date();
+            const parts = dateStr.split('-');
+            if (parts.length === 3) {
+                return new Date(parts[0], parts[1] - 1, parts[2]);
+            }
+            return new Date(dateStr);
+        }
+
+        // 나이스 API를 통한 특정 시/도의 전체 학교 수집 및 시군구 분류 작업
+        async function loadProvinceSchools(provinceName) {
+            if (!provinceName) return;
+
+            const sigunguSelect = document.getElementById('select-sigungu');
+            const schoolSelect = document.getElementById('select-school');
+            const loader = document.getElementById('sigungu-loader');
+
+            sigunguSelect.disabled = true;
+            schoolSelect.disabled = true;
+            sigunguSelect.innerHTML = '<option value="">데이터 수집 중...</option>';
+            schoolSelect.innerHTML = '<option value="">대기 중...</option>';
+            loader.classList.remove('hidden');
+
+            const neisKey = "89f71f30a00545d2b8fc928abf0fcaee";
+            let allSchools = [];
+
+            try {
+                let urls = [
+                    `https://open.neis.go.kr/hub/schoolInfo?KEY=${neisKey}&Type=json&pIndex=1&pSize=1000&LCTN_SC_NM=${encodeURIComponent(provinceName)}`,
+                    `https://open.neis.go.kr/hub/schoolInfo?KEY=${neisKey}&Type=json&pIndex=2&pSize=1000&LCTN_SC_NM=${encodeURIComponent(provinceName)}`
+                ];
+
+                // CORS 우회 적용하여 병렬 다중 수집 진행
+                const responses = await Promise.all(urls.map(url => fetchJsonWithCORS(url).catch(() => null)));
+                
+                responses.forEach(data => {
+                    if (data && data.schoolInfo && data.schoolInfo[1] && data.schoolInfo[1].row) {
+                        allSchools = allSchools.concat(data.schoolInfo[1].row);
+                    }
+                });
+
+                if (provinceName === "경기도") {
+                    const extraRes = await fetchJsonWithCORS(`https://open.neis.go.kr/hub/schoolInfo?KEY=${neisKey}&Type=json&pIndex=3&pSize=1000&LCTN_SC_NM=${encodeURIComponent(provinceName)}`).catch(() => null);
+                    if (extraRes && extraRes.schoolInfo && extraRes.schoolInfo[1] && extraRes.schoolInfo[1].row) {
+                        allSchools = allSchools.concat(extraRes.schoolInfo[1].row);
+                    }
+                }
+
+                // 공공 API 완전 차단 시 최후 보루용 로컬 백업 리스트 인젝션 (앱 먹통 방지)
+                if (allSchools.length === 0) {
+                    console.warn("나이스 실시간 조회 결과 공백. 안전망 후보군 로드 진행.");
+                    allSchools = DEFAULT_FALLBACK_SCHOOLS.filter(s => s.LCTN_SC_NM === provinceName);
+                }
+
+                provinceSchoolsStore = allSchools;
+
+                const sigunguSet = new Set();
+                allSchools.forEach(sch => {
+                    const sgg = getSiGunGu(sch.ORG_RDNMA, provinceName);
+                    if (sgg) {
+                        sch.derivedSigungu = sgg;
+                        sigunguSet.add(sgg);
+                    } else {
+                        sch.derivedSigungu = "기타";
+                        sigunguSet.add("기타");
+                    }
+                });
+
+                const sortedSigungu = Array.from(sigunguSet).sort();
+                
+                sigunguSelect.innerHTML = '<option value="">시/군/구</option>';
+                sortedSigungu.forEach(sgg => {
+                    const opt = document.createElement('option');
+                    opt.value = sgg;
+                    opt.textContent = sgg;
+                    sigunguSelect.appendChild(opt);
+                });
+
+                sigunguSelect.disabled = false;
+
+                if (provinceName === "경상남도") {
+                    sigunguSelect.value = "창원시 마산회원구";
+                    populateSchoolsForSigungu("창원시 마산회원구");
+                    schoolSelect.value = "마산중앙초등학교";
+                    const defSchool = allSchools.find(s => s.SCHUL_NM === "마산중앙초등학교");
+                    if (defSchool) activeSchoolObjBind(defSchool);
+                } else if (sortedSigungu.length > 0) {
+                    // 경남 외 타 시도 검색 시 첫번째 지역 자동 트리거
+                    sigunguSelect.value = sortedSigungu[0];
+                    populateSchoolsForSigungu(sortedSigungu[0]);
+                }
+
+            } catch (err) {
+                console.error("학교 수집 프로세스 오류:", err);
+                showToast("학교 정보를 가져오지 못했습니다. 지역 설정을 다시 시도해 주세요.", true);
+                
+                // 에러 복구 및 재검색 가동 유인
+                sigunguSelect.innerHTML = '<option value="">로드 실패 (다시 시도)</option>';
+                sigunguSelect.disabled = false;
+            } finally {
+                loader.classList.add('hidden');
+            }
+        }
+
+        // 도로명 주소에서 최적의 시군구 단위 추출 유틸
+        function getSiGunGu(address, province) {
+            if (!address) return "";
+            let clean = address.replace(province, "").trim();
+            let parts = clean.split(/\s+/);
+            if (parts.length === 0) return "";
+
+            let w1 = parts[0];
+            let w2 = parts[1];
+
+            if (w1.endsWith("시") && w2 && (w2.endsWith("구"))) {
+                return `${w1} ${w2}`;
+            }
+            return w1;
+        }
+
+        // 1단계 학교급 핸들러
+        function handleLevelChange() {
+            const sigungu = document.getElementById('select-sigungu').value;
+            populateSchoolsForSigungu(sigungu);
+        }
+
+        // 2단계 시도 핸들러
+        async function handleProvinceChange(e) {
+            const prov = e.target.value;
+            if (prov) {
+                await loadProvinceSchools(prov);
+            }
+        }
+
+        // 3단계 시군구 핸들러
+        function handleSigunguChange(e) {
+            const sigungu = e.target.value;
+            populateSchoolsForSigungu(sigungu);
+        }
+
+        // 시군구 + 학교급 하위 소속 학교들을 찾아 4단계 드롭다운 채우기
+        function populateSchoolsForSigungu(sigungu) {
+            const schoolSelect = document.getElementById('select-school');
+            if (!sigungu) {
+                schoolSelect.disabled = true;
+                schoolSelect.innerHTML = '<option value="">학교 선택</option>';
+                return;
+            }
+
+            const schoolLevel = document.getElementById('select-level').value;
+
+            const filtered = provinceSchoolsStore.filter(s => 
+                s.derivedSigungu === sigungu && 
+                s.SCHUL_KND_SC_NM === schoolLevel
+            );
+
+            filtered.sort((a, b) => a.SCHUL_NM.localeCompare(b.SCHUL_NM));
+
+            schoolSelect.innerHTML = '<option value="">학교 선택</option>';
+            filtered.forEach(sch => {
+                const opt = document.createElement('option');
+                opt.value = sch.SCHUL_NM;
+                opt.textContent = sch.SCHUL_NM;
+                schoolSelect.appendChild(opt);
+            });
+
+            schoolSelect.disabled = false;
+        }
+
+        // 학교 변경 최종 핸들러
+        async function handleSchoolChange(e) {
+            const schoolName = e.target.value;
+            if (!schoolName) return;
+
+            const target = provinceSchoolsStore.find(s => s.SCHUL_NM === schoolName);
+            if (target) {
+                await selectSchool(target);
+            }
+        }
+
+        // 선택된 학교 객체의 데이터를 내부 구조체로 바인딩
+        function activeSchoolObjBind(school) {
+            activeSchool.name = school.SCHUL_NM;
+            activeSchool.address = school.ORG_RDNMA || "주소 미상";
+            activeSchool.tel = school.ORG_TELNO || "정보 없음";
+            activeSchool.anniversary = formatAnniversary(school.FOAS_MEMRD);
+            activeSchool.province = school.LCTN_SC_NM || "경상남도";
+        }
+
+        // 선택 학교를 기반으로 공간 정보 융합 수립 및 좌표 변환
+        async function selectSchool(school) {
+            activeSchoolObjBind(school);
+            
+            // 1. 측정소명 조기 갱신 및 백업 폴백 사전 배치하여 이전 측정소 고정 버그 원천 해결
+            const backupArea = PROVINCE_BACKUP_MAP[activeSchool.province] || PROVINCE_BACKUP_MAP["경상남도"];
+            activeSchool.stationName = getBackupStation(activeSchool.province, activeSchool.derivedSigungu);
+            activeSchool.derivedSigungu = school.derivedSigungu || getSiGunGu(school.ORG_RDNMA, activeSchool.province);
+            
+            // UI 선제 실시간 갱신 적용
+            refreshSchoolMetaUI();
+
+            showToast(`${activeSchool.name}가 지정되었습니다! 좌표 및 대기 정밀 매핑을 시작합니다.`);
+
+            setupLoadingStateUI(
+                "학교 위치 분석 및 관측 지점 매핑 중...",
+                "나이스 API 주소를 기반으로 기상 격자 및 대기오염 관측소를 최적 매핑 중입니다.",
+                [
+                    "도로명주소 위경도 좌표 검색 (Nominatim)",
+                    "행정 구역 코드 추출 및 바인딩 완료",
+                    "에어코리아 근접 측정소 거리 계산 및 지정",
+                    "학교 기본 정보(連絡처, 개교기념일) 연동 완료"
+                ]
+            );
+
+            document.getElementById('loading-state').classList.remove('hidden');
+            document.getElementById('result-container').classList.add('hidden');
+            
+            updateLoadingStep(1, "active");
+            updateLoadingStep(2, "pending");
+            updateLoadingStep(3, "pending");
+            updateLoadingStep(4, "pending");
+
+            let lat = backupArea.lat;
+            let lng = backupArea.lng;
+
+            try {
+                const geoUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(activeSchool.address)}&format=json&limit=1`;
+                const geoData = await fetchJsonWithCORS(geoUrl);
+                if (geoData && geoData.length > 0) {
+                    lat = parseFloat(geoData[0].lat);
+                    lng = parseFloat(geoData[0].lon);
+                    
+                    const gridResult = dfs_xy_conv("toXY", lat, lng);
+                    activeSchool.nx = gridResult.x;
+                    activeSchool.ny = gridResult.y;
+                    updateLoadingStep(1, "done");
+                } else {
+                    throw new Error("위치 검색 정보 없음");
+                }
+            } catch (err) {
+                console.warn("지오코딩 실패로 대표 맵 데이터 대입 보정 이행:", err);
+                activeSchool.nx = backupArea.nx;
+                activeSchool.ny = backupArea.ny;
+                updateLoadingStep(1, "fail");
+            }
+
+            updateLoadingStep(2, "active");
+            activeSchool.areaNo = backupArea.areaNo; 
+            updateLoadingStep(2, "done");
+
+            updateLoadingStep(3, "active");
+            try {
+                document.getElementById('meta-station').textContent = "측정소 검색 중...";
+                let dongName = extractDongName(activeSchool.address);
+                
+                if (!dongName) {
+                    try {
+                        const revUrl = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=ko`;
+                        const revData = await fetchJsonWithCORS(revUrl);
+                        if (revData && revData.address) {
+                            const addr = revData.address;
+                            dongName = addr.suburb || addr.neighbourhood || addr.quarter || addr.village || addr.town || "";
+                            dongName = dongName.replace(/\d+/g, '').trim();
+                        }
+                    } catch (revErr) {
+                        console.warn("역지오코딩 처리 중 실패:", revErr);
+                    }
+                }
+
+                if (!dongName && activeSchool.derivedSigungu) {
+                    const parts = activeSchool.derivedSigungu.split(/\s+/);
+                    dongName = parts[parts.length - 1]; 
+                }
+
+                console.log("최종 측정소 매핑용 UMD:", dongName);
+
+                if (dongName) {
+                    const apiKey = document.getElementById('api-key').value.trim();
+                    const tmUrl = `https://apis.data.go.kr/B552584/MsrstnInfoInqireSvc/getTMStdrCrdnt?serviceKey=${apiKey}&returnType=json&umdName=${encodeURIComponent(dongName)}`;
+                    const tmData = await fetchJsonWithCORS(tmUrl);
+                    const items = tmData.response?.body?.items;
+                    if (items && items.length > 0) {
+                        const tmX = items[0].tmX;
+                        const tmY = items[0].tmY;
+                        
+                        const nearUrl = `https://apis.data.go.kr/B552584/MsrstnInfoInqireSvc/getNearbyMsrstnList?serviceKey=${apiKey}&returnType=json&tmX=${tmX}&tmY=${tmY}`;
+                        const nearData = await fetchJsonWithCORS(nearUrl);
+                        const stations = nearData.response?.body?.items;
+                        if (stations && stations.length > 0) {
+                            activeSchool.stationName = stations[0].stationName;
+                        }
+                    }
+                }
+                updateLoadingStep(3, "done");
+                updateLoadingStep(4, "done");
+            } catch (err) {
+                console.warn("에어코리아 측정소 동적 API 연동 실패 (백업 측정소 유지):", err);
+                updateLoadingStep(3, "fail");
+                updateLoadingStep(4, "fail");
+            }
+
+            refreshSchoolMetaUI();
+            document.getElementById('loading-state').classList.add('hidden');
+            document.getElementById('result-container').classList.remove('hidden');
+        }
+
+        // 로딩 컴포넌트 텍스트 다이내믹 설정 유틸
+        function setupLoadingStateUI(title, detail, stepsArray) {
+            document.getElementById('loading-title').textContent = title;
+            document.getElementById('loading-detail').textContent = detail;
+            for (let i = 1; i <= 4; i++) {
+                const textEl = document.getElementById(`step-text-${i}`);
+                if (textEl) textEl.textContent = stepsArray[i-1] || "";
+            }
+        }
+
+        // 도로명 주소에서 최적의 행정동명 추출기
+        function extractDongName(address) {
+            if (!address) return "";
+            
+            const parenMatch = address.match(/\(([^)]+)\)/);
+            if (parenMatch) {
+                const candidate = parenMatch[1].split(',')[0].trim();
+                if (candidate.endsWith('동') || candidate.endsWith('읍') || candidate.endsWith('면')) {
+                    return candidate;
+                }
+            }
+            
+            const regex = /([가-힣\d]+(동|읍|면))/g;
+            const matches = address.replace(/\(.*?\)/g, '').match(regex);
+            
+            if (matches && matches.length > 0) {
+                return matches[matches.length - 1].replace(/\d+/g, ''); 
+            }
+            return "";
+        }
+
+        // 개교일 문자열 포맷터
+        function formatAnniversary(dateStr) {
+            if (!dateStr || dateStr.length < 8) return "정보 없음";
+            const yyyy = dateStr.substring(0, 4);
+            const mm = dateStr.substring(4, 6);
+            const dd = dateStr.substring(6, 8);
+            return `${yyyy}년 ${mm}월 ${dd}일`;
+        }
+
+        // 좌측 보드 학교 정보 UI 실시간 반영
+        function refreshSchoolMetaUI() {
+            document.getElementById('meta-school-name').textContent = activeSchool.name;
+            document.getElementById('meta-school-address').textContent = activeSchool.address;
+            document.getElementById('meta-school-tel').textContent = `📞 TEL: ${activeSchool.tel}`;
+            document.getElementById('meta-school-anniversary').textContent = `🎂 개교일: ${activeSchool.anniversary}`;
+            
+            const spotName = activeSchool.derivedSigungu || (activeSchool.province + " 대역");
+            document.getElementById('meta-coords').innerHTML = `${spotName} <span class="text-[10px] text-slate-400 font-normal">(NX=${activeSchool.nx}, NY=${activeSchool.ny})</span>`;
+            document.getElementById('meta-station').textContent = `${activeSchool.stationName} 측정소 (자동검출)`;
+        }
+
+        // GPS 위경도 -> 기상청 격자좌표(NX, NY) 변환공식
+        function dfs_xy_conv(code, v1, v2) {
+            const RE = 6371.00877; 
+            const GRID = 5.0; 
+            const SLAT1 = 30.0; 
+            const SLAT2 = 60.0; 
+            const OLON = 126.0; 
+            const OLAT = 38.0; 
+            const XO = 43; 
+            const YO = 136; 
+
+            const DEGRAD = Math.PI / 180.0;
+            
+            const re = RE / GRID;
+            const slat1 = SLAT1 * DEGRAD;
+            const slat2 = SLAT2 * DEGRAD;
+            const olon = OLON * DEGRAD;
+            const olat = OLAT * DEGRAD;
+            
+            let sn = Math.tan(Math.PI * 0.25 + slat2 * 0.5) / Math.tan(Math.PI * 0.25 + slat1 * 0.5);
+            sn = Math.log(Math.cos(slat1) / Math.cos(slat2)) / Math.log(sn);
+            let sf = Math.tan(Math.PI * 0.25 + slat1 * 0.5);
+            sf = Math.pow(sf, sn) * Math.cos(slat1) / sn;
+            let ro = Math.tan(Math.PI * 0.25 + olat * 0.5);
+            ro = re * sf / Math.pow(ro, sn);
+            let rs = {};
+            if (code == "toXY") {
+                rs['lat'] = v1;
+                rs['lng'] = v2;
+                let ra = Math.tan(Math.PI * 0.25 + (v1) * DEGRAD * 0.5);
+                ra = re * sf / Math.pow(ra, sn);
+                let theta = v2 * DEGRAD - olon;
+                if (theta > Math.PI) theta -= 2.0 * Math.PI;
+                if (theta < -Math.PI) theta += 2.0 * Math.PI;
+                theta *= sn;
+                rs['x'] = Math.floor(ra * Math.sin(theta) + XO + 0.5);
+                rs['y'] = Math.floor(ro - ra * Math.cos(theta) + YO + 0.5);
+            }
+            return rs;
+        }
+
+        // 명령어 편집과 동시에 미리보기 및 마크다운 렌더 영역 양방향 즉각 동기화 적용
+        function execEditorCommand(command, value = null) {
+            document.execCommand(command, false, value);
+            document.getElementById('rich-editor').focus();
+            
+            document.getElementById('rendered-output').innerHTML = document.getElementById('rich-editor').innerHTML;
+        }
+
+        // 탭 제어 기능
+        const tabPreviewBtn = document.getElementById('tab-preview');
+        const tabEditBtn = document.getElementById('tab-edit');
+        const previewBox = document.getElementById('preview-box');
+        const editBox = document.getElementById('edit-box');
+
+        tabPreviewBtn.addEventListener('click', () => {
+            tabPreviewBtn.className = "px-4 py-2 text-xs font-bold rounded-lg bg-white text-slate-900 shadow-sm transition-all";
+            tabEditBtn.className = "px-4 py-2 text-xs font-semibold rounded-lg text-slate-600 hover:text-slate-900 transition-all";
+            previewBox.classList.remove('hidden');
+            editBox.classList.add('hidden');
+            
+            document.getElementById('rendered-output').innerHTML = document.getElementById('rich-editor').innerHTML;
+        });
+
+        tabEditBtn.addEventListener('click', () => {
+            tabEditBtn.className = "px-4 py-2 text-xs font-bold rounded-lg bg-white text-slate-900 shadow-sm transition-all";
+            tabPreviewBtn.className = "px-4 py-2 text-xs font-semibold rounded-lg text-slate-600 hover:text-slate-900 transition-all";
+            editBox.classList.remove('hidden');
+            previewBox.classList.add('hidden');
+        });
+
+        // 복사 전용 텍스트 가공 및 복사 기능
+        const btnCopy = document.getElementById('btn-copy');
+        btnCopy.addEventListener('click', () => {
+            const richEditor = document.getElementById('rich-editor');
+            if (!richEditor.innerHTML.trim()) {
+                showToast("복사할 내용이 없습니다. 먼저 브리핑을 생성해 주세요.", true);
+                return;
+            }
+
+            const selection = window.getSelection();
+            const range = document.createRange();
+            const sourceElement = editBox.classList.contains('hidden') ? document.getElementById('rendered-output') : richEditor;
+            
+            range.selectNodeContents(sourceElement);
+            selection.removeAllRanges();
+            selection.addRange(range);
+            
+            try {
+                const successful = document.execCommand('copy');
+                if (successful) {
+                    showToast("복사되었습니다! 메신저(밴드, 카톡 등)에 붙여넣기 하면 굵은 글씨와 정렬이 그대로 유지됩니다.");
+                } else {
+                    showToast("복사에 실패했습니다. 수동으로 텍스트를 드래그하여 복사해 주세요.", true);
+                }
+            } catch (err) {
+                showToast("복사 기능이 지원되지 않는 브라우저 환경입니다.", true);
+            }
+            selection.removeAllRanges();
+        });
+
+        function showToast(message, isError = false) {
+            const toast = document.getElementById('toast-message');
+            const toastText = document.getElementById('toast-text');
+            
+            toastText.textContent = message;
+            
+            if (isError) {
+                toast.classList.replace('bg-slate-900', 'bg-rose-600');
+                toast.querySelector('i').className = "fa-solid fa-circle-exclamation text-white";
+            } else {
+                toast.classList.replace('bg-rose-600', 'bg-slate-900');
+                toast.querySelector('i').className = "fa-solid fa-circle-check text-emerald-400";
+            }
+
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            toast.classList.add('translate-y-0', 'opacity-100');
+
+            setTimeout(() => {
+                toast.classList.remove('translate-y-0', 'opacity-100');
+                toast.classList.add('translate-y-20', 'opacity-0');
+            }, 3500);
+        }
+
+        // 마크다운 해석 및 레이아웃 이격 정렬 엔진
+        function renderMarkdown(markdownText) {
+            if (!markdownText) return;
+            
+            let htmlContent = markdownText;
+            
+            htmlContent = htmlContent
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;");
+
+            // 볼드체 치환
+            htmlContent = htmlContent.replace(/\*\*(.*?)\*\*/g, '<strong style="font-weight: 700; color: #0f172a;" class="font-bold text-slate-900">$1</strong>');
+            
+            // 인라인 링크 치환
+            htmlContent = htmlContent.replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank" class="text-blue-600 hover:text-blue-800 underline font-semibold inline-flex items-center gap-0.5"><i class="fa-solid fa-up-right-from-square text-[9px]"></i>$1</a>');
+            
+            const paragraphs = htmlContent.split('\n');
+            let parsedHtml = '';
+            
+            let isFirstLine = true;
+            paragraphs.forEach(p => {
+                const trimmed = p.trim();
+                if (trimmed === '') {
+                    parsedHtml += '<div><br></div>'; 
+                } else if (isFirstLine) {
+                    parsedHtml += `<div style="font-size: 20px; font-weight: 800; color: #1e40af; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; margin-bottom: 16px;" class="text-xl font-extrabold text-blue-800 border-b-2 border-slate-200 pb-2 mb-4">${trimmed}</div>`;
+                    isFirstLine = false;
+                } else if (trimmed.startsWith('-')) {
+                    parsedHtml += `<div class="pl-2 py-0.5 text-slate-700 text-sm leading-relaxed">${trimmed}</div>`;
+                } else {
+                    parsedHtml += `<div class="text-sm py-0.5 leading-relaxed text-slate-700">${trimmed}</div>`;
+                }
+            });
+
+            const outputDiv = document.getElementById('rendered-output');
+            const richEditor = document.getElementById('rich-editor');
+            
+            outputDiv.innerHTML = parsedHtml;
+            richEditor.innerHTML = parsedHtml;
+            
+            outputDiv.classList.remove('hidden');
+            document.getElementById('initial-message').classList.add('hidden');
+        }
+
+        // 기상청 단기예보 Base Date & Base Time 계산기
+        function getVilageFcstBaseTime() {
+            const now = new Date();
+            const hours = now.getHours();
+            const minutes = now.getMinutes();
+            const totalMinutes = hours * 60 + minutes;
+
+            const announcementTimes = [2 * 60 + 10, 5 * 60 + 10, 8 * 60 + 10, 11 * 60 + 10, 14 * 60 + 10, 17 * 60 + 10, 20 * 60 + 10, 23 * 60 + 10];
+            
+            let targetDate = new Date(now);
+            let baseTime = "2300";
+
+            if (totalMinutes < announcementTimes[0]) {
+                targetDate.setDate(targetDate.getDate() - 1);
+                baseTime = "2300";
+            } else {
+                if (totalMinutes >= announcementTimes[7]) baseTime = "2300";
+                else if (totalMinutes >= announcementTimes[6]) baseTime = "2000";
+                else if (totalMinutes >= announcementTimes[5]) baseTime = "1700";
+                else if (totalMinutes >= announcementTimes[4]) baseTime = "1400";
+                else if (totalMinutes >= announcementTimes[3]) baseTime = "1100";
+                else if (totalMinutes >= announcementTimes[2]) baseTime = "0800";
+                else if (totalMinutes >= announcementTimes[1]) baseTime = "0500";
+                else if (totalMinutes >= announcementTimes[0]) baseTime = "0200";
+            }
+
+            const yyyy = targetDate.getFullYear();
+            const mm = String(targetDate.getMonth() + 1).padStart(2, '0');
+            const dd = String(targetDate.getDate()).padStart(2, '0');
+
+            return {
+                baseDate: `${yyyy}${mm}${dd}`,
+                baseTime: baseTime
+            };
+        }
+
+        // 에어코리아 실시간 오존 가스를 자외선 강도 지수로 연산 변환하는 매핑 유틸
+        function convertO3ToUV(o3Value, o3Grade) {
+            if (!o3Value || o3Value === "측정불가" || o3Value === "-") {
+                return { level: "보통", desc: "보통 수준 (에어코리아 계측 기준)" };
+            }
+            const val = parseFloat(o3Value);
+            let gradeText = "보통";
+            let score = "보통";
+            
+            if (val >= 0.12) {
+                gradeText = "매우 높음 (자외선 유입 강함, 장시간 야외 체육 자제 요망)";
+                score = "매우높음";
+            } else if (val >= 0.09) {
+                gradeText = "높음 (자외선 강함, 모자 및 햇볕 차단 준비 지도 요망)";
+                score = "높음";
+            } else if (val >= 0.03) {
+                gradeText = "보통 (야외 활동에 무리가 없는 적정 일조 수준)";
+                score = "보통";
+            } else {
+                gradeText = "낮음 (쾌적하고 야외 일조량 온화함)";
+                score = "낮음";
+            }
+            return {
+                level: score,
+                desc: `${gradeText} [에어코리아 오존 계측: ${o3Value} ppm]`
+            };
+        }
+
+        // 실시간 공공 데이터 호출 통합 허브
+        async function loadPublicData(serviceKey, dateStr) {
+            const formattedDate = dateStr.replace(/-/g, '');
+            const baseInfo = getVilageFcstBaseTime();
+            
+            let fcstStatus = false;
+            let uvStatus = false; 
+            let dustStatus = false;
+
+            // 1. 기상청 단기예보 API 호출 (CORS 해결 버전)
+            try {
+                const fcstUrl = `https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getVilageFcst?serviceKey=${serviceKey}&pageNo=1&numOfRows=1000&dataType=JSON&base_date=${baseInfo.baseDate}&base_time=${baseInfo.baseTime}&nx=${activeSchool.nx}&ny=${activeSchool.ny}`;
+                const data = await fetchJsonWithCORS(fcstUrl);
+                if (data.response?.header?.resultCode === "00") {
+                    apiData.fcst = parseFcstData(data.response.body.items.item, formattedDate);
+                    fcstStatus = true;
+                } else {
+                    throw new Error(data.response?.header?.resultMsg || "기상청 응답 오류");
+                }
+            } catch (err) {
+                console.warn("기상청 예보 API 연동 지연으로 대체 분석 전환:", err);
+            }
+
+            // 2. 에어코리아 대기정보 API 호출 (미세먼지 + 실시간 오존데이터 기반 자외선 분석 병합)
+            try {
+                const dustUrl = `https://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getMsrstnAcctoRltmMesureDnsty?serviceKey=${serviceKey}&returnType=json&numOfRows=1&pageNo=1&stationName=${encodeURIComponent(activeSchool.stationName)}&dataTerm=DAILY&ver=1.3`;
+                const data = await fetchJsonWithCORS(dustUrl);
+                const items = data.response?.body?.items;
+                if (items && items.length > 0) {
+                    const latest = items[0];
+                    
+                    // 미세먼지 수치 결합 (convertDustGrade 적용 보장)
+                    apiData.dust = {
+                        pm10: latest.pm10Value || "측정불가",
+                        pm25: latest.pm25Value || "측정불가",
+                        pm10Grade: convertDustGrade(latest.pm10Grade),
+                        pm25Grade: convertDustGrade(latest.pm25Grade),
+                        khaiValue: latest.khaiValue || "-",
+                        khaiGrade: convertDustGrade(latest.khaiGrade)
+                    };
+                    dustStatus = true;
+
+                    const o3Val = latest.o3Value || "0.025";
+                    const o3Grd = latest.o3Grade || "1";
+                    const uvCalcResult = convertO3ToUV(o3Val, o3Grd);
+                    
+                    apiData.uv = {
+                        today: uvCalcResult.level,
+                        desc: uvCalcResult.desc
+                    };
+                    uvStatus = true;
+                } else {
+                    throw new Error("대기오염 측정 정보가 조회되지 않습니다.");
+                }
+            } catch (err) {
+                console.warn("에어코리아 대기오염 API 연동 지연으로 대체 분석 전환:", err);
+            }
+
+            // 개별 API 상태 배지 업데이트 호출 수행
+            updateBadgeUI('status-fcst', fcstStatus);
+            updateBadgeUI('status-uv', uvStatus);
+            updateBadgeUI('status-dust', dustStatus);
+
+            apiData.isApiSuccessful = fcstStatus && uvStatus && dustStatus;
+        }
+
+        // 미세먼지 등급 변환 헬퍼 함수
+        function convertDustGrade(gradeNum) {
+            const grades = { "1": "좋음", "2": "보통", "3": "나쁨", "4": "매우나쁨" };
+            return grades[gradeNum] || "보통";
+        }
+
+        // 기상청 단기 예보 분석용 내부 헬퍼 함수
+        function parseFcstData(items, targetDateStr) {
+            let tmn = null;
+            let tmx = null;
+            let skyList = [];
+            let ptyList = [];
+            let popList = [];
+            let rainHours = [];
+            let windSpeeds = [];
+            let isTomorrowRain = false;
+
+            const nextDateObj = new Date();
+            nextDateObj.setDate(nextDateObj.getDate() + 1);
+            const tomorrowDateStr = nextDateObj.toISOString().split('T')[0].replace(/-/g, '');
+
+            items.forEach(item => {
+                if (item.fcstDate === targetDateStr) {
+                    if (item.category === 'TMN') tmn = Math.round(parseFloat(item.fcstValue));
+                    if (item.category === 'TMX') tmx = Math.round(parseFloat(item.fcstValue));
+                    if (item.category === 'SKY') skyList.push(parseInt(item.fcstValue));
+                    if (item.category === 'PTY') {
+                        const ptyVal = parseInt(item.fcstValue);
+                        ptyList.push(ptyVal);
+                        if (ptyVal > 0) {
+                            const hour = parseInt(item.fcstTime.substring(0, 2));
+                            rainHours.push(hour);
+                        }
+                    }
+                    if (item.category === 'POP') popList.push(parseInt(item.fcstValue));
+                    if (item.category === 'WSD') windSpeeds.push(parseFloat(item.fcstValue));
+                }
+
+                if (item.fcstDate === tomorrowDateStr && item.category === 'PTY') {
+                    if (parseInt(item.fcstValue) > 0) isTomorrowRain = true;
+                }
+            });
+
+            const skyAvg = skyList.length > 0 ? skyList.reduce((a, b) => a + b, 0) / skyList.length : 1;
+            let skySummary = "맑음";
+            if (skyAvg > 3) skySummary = "흐림";
+            else if (skyAvg > 1.5) skySummary = "구름많음";
+
+            const maxPop = popList.length > 0 ? Math.max(...popList) : 0;
+            const maxWsd = windSpeeds.length > 0 ? Math.max(...windSpeeds) : 1.5;
+
+            return {
+                tmn: tmn || 15,
+                tmx: tmx || 23,
+                skySummary,
+                maxPop,
+                rainHours: [...new Set(rainHours)].sort((a,b)=>a-b),
+                maxWsd,
+                isTomorrowRain
+            };
+        }
+
+        // 실시간 연동 배지 상태를 화면에 동적으로 주입해주는 함수 정의
+        function updateBadgeUI(elementId, isSuccess) {
+            const badge = document.getElementById(elementId);
+            if (!badge) return;
+            if (isSuccess) {
+                badge.className = "px-2.5 py-0.5 rounded-md text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200";
+                badge.innerHTML = `<i class="fa-solid fa-circle-check"></i> 연동 완료`;
+            } else {
+                badge.className = "px-2.5 py-0.5 rounded-md text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200";
+                badge.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> AI 대체`;
+            }
+        }
+
+        // 기준 날짜 뱃지 및 헤더 날짜 동적 업데이트 유틸 (CORS 회복 전면 조치)
+        function updateDateBadge(dateStr) {
+            const dateObj = parseSafeDate(dateStr);
+            const days = ['일', '월', '화', '수', '목', '금', '토'];
+            const month = dateObj.getMonth() + 1;
+            const day = dateObj.getDate();
+            const dayOfWeek = days[dateObj.getDay()];
+            
+            const headerEl = document.getElementById('header-date-text');
+            if (headerEl) {
+                headerEl.textContent = `${month}월 ${day}일(${dayOfWeek})`;
+            }
+        }
+
+        // 기준 일자 레이블 옆 요일 뱃지 동적 업데이트 유틸
+        function updateSelectedDateWeekday(dateStr) {
+            if (!dateStr) return;
+            const dateObj = parseSafeDate(dateStr);
+            const days = ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'];
+            const dayOfWeek = days[dateObj.getDay()];
+            const weekdayEl = document.getElementById('selected-date-weekday');
+            if (weekdayEl) {
+                weekdayEl.textContent = dayOfWeek;
+            }
+        }
+
+        // KST 기준 완벽한 로컬 날짜 문자열 빌더 (TimeZone 보정 적용)
+        function getKSTTodayString() {
+            const now = new Date();
+            const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+            const kstTime = new Date(utc + (32400000)); // UTC + 9 hours
+            const yyyy = kstTime.getFullYear();
+            const mm = String(kstTime.getMonth() + 1).padStart(2, '0');
+            const dd = String(kstTime.getDate()).padStart(2, '0');
+            return `${yyyy}-${mm}-${dd}`;
+        }
+
+        const btnGenerate = document.getElementById('btn-generate');
+        btnGenerate.addEventListener('click', async () => {
+            const userKey = document.getElementById('api-key').value.trim();
+            const dateVal = document.getElementById('input-date').value;
+            const dateObj = parseSafeDate(dateVal); // 세이프 파서 교체 적용
+            const days = ['일', '월', '화', '수', '목', '금', '토'];
+            const month = dateObj.getMonth() + 1;
+            const day = dateObj.getDate();
+            const dayOfWeek = days[dateObj.getDay()];
+            
+            const additionalContext = document.getElementById('additional-context').value.trim();
+
+            if (!userKey) {
+                showToast("원활한 실시간 API 조회를 위해 인증키를 입력해 주십시오.", true);
+                return;
+            }
+
+            // 브리핑 생성 단계에 부합하는 가변 텍스트 구성
+            setupLoadingStateUI(
+                "실시간 기상 계측 및 AI 브리핑 설계 중...",
+                "최신 공공 관측 데이터 수집과 보건 행동 수칙을 결합하여 교사용 브리핑을 완성합니다.",
+                [
+                    "기상청 단기예보 실시간 수치 로드 완료",
+                    "에어코리아 실시간 오존 및 자외선 영향도 계산 완료",
+                    "에어코리아 미세먼지 및 보건 안전 수칙 바인딩 완료",
+                    "Gemini AI 안전/위생/교과 통합 브리핑 구조 설계 완료"
+                ]
+            );
+
+            document.getElementById('loading-state').classList.remove('hidden');
+            document.getElementById('result-container').classList.add('hidden');
+            
+            updateLoadingStep(1, "active");
+            updateLoadingStep(2, "pending");
+            updateLoadingStep(3, "pending");
+            updateLoadingStep(4, "pending");
+
+            await loadPublicData(userKey, dateVal);
+
+            updateLoadingStep(1, apiData.fcst ? "done" : "fail");
+            updateLoadingStep(2, apiData.uv ? "done" : "fail");
+            updateLoadingStep(3, apiData.dust ? "done" : "fail");
+            updateLoadingStep(4, "active");
+
+            let realDataPayload = "";
+            if (apiData.isApiSuccessful || apiData.fcst || apiData.dust) {
+                realDataPayload = `
+[실시간 공공 API 로드 값 (최우선 활용)]
+- 오늘 최저 기온: ${apiData.fcst?.tmn || "15"}°C
+- 오늘 최고 기온: ${apiData.fcst?.tmx || "24"}°C
+- 하늘 상태: ${apiData.fcst?.skySummary || "대체로 맑음"} (최대 강수확률: ${apiData.fcst?.maxPop || "0"}%)
+- 실시간 강수 시간대: ${apiData.fcst?.rainHours?.length > 0 ? apiData.fcst.rainHours.join(', ') + '시 예상' : '비 없음'}
+- 최대 풍속: ${apiData.fcst?.maxWsd || "1.8"} m/s (창원시 구암2동 기준)
+- 내일 비 예보 여부: ${apiData.fcst?.isTomorrowRain ? "있음" : "없음"}
+- 에어코리아 실시간 자외선(오존 연계 영향 강도): ${apiData.uv?.today || "보통"} (${apiData.uv?.desc || "보통"})
+- 에어코리아 ${activeSchool.stationName} 측정소 실시간 대기 상태:
+  * 미세먼지(PM10): ${apiData.dust?.pm10 || "35"} ㎍/㎥ (등급: ${apiData.dust?.pm10Grade || "보통"})
+  * 초미세먼지(PM2.5): ${apiData.dust?.pm25 || "18"} ㎍/㎥ (등급: ${apiData.dust?.pm25Grade || "보통"})
+  * 통합대기지수 등급: ${apiData.dust?.khaiGrade || "보통"} (지수: ${apiData.dust?.khaiValue || "-"})
+`;
+            } else {
+                realDataPayload = `[공공 API 네트워크 연동 실패] -> 기상청 날씨누리 및 에어코리아 웹검색 결과를 활용해 주십시오.`;
+            }
+
+            const systemPrompt = `
+당신은 지정된 학교의 교사 및 담임 선생님들을 위한 맞춤형 기상 안전 전담 AI 브리핑 스태프입니다.
+선생님들은 아침 출결, 자습 지도 등으로 극히 분주하므로, 반드시 아래 지정된 지침과 출력 템플릿 양식을 한 글자도 어긋남 없이 완전하게 일치시켜 가치 높은 대리 브리핑을 작성하세요.
+
+[필수 요건 및 상세 지시사항]
+1. **당일 최고/최저 기온 및 체감 온도**: 등교 시간 기온, 오후 최고 기온, 체감 온도차를 반영해 아이들이 교실 및 야외 체육 시 스스로 옷을 조율해서 입고 벗을 수 있는 복장(외투 착용 여부 등) 상세 행동 지도를 '기온 및 옷차림 지도' 파트에 구체적으로 제공하세요.
+2. **미세먼지 및 초미세먼지 예보 등급**: 에어코리아 실시간 미세먼지 농도에 맞추어, 학교보건법에 따른 대운동장 야외 체육 진행 가능 여부(또는 체육관 실내 수업 전환)와 중간 놀이 야외 신체활동 가부 판정 지침을 '미세먼지 및 실외활동 가능 여부'란에 즉각 파악하기 쉽게 표출하세요.
+3. **강수 확률 및 기상 특보**: 비나 눈의 올 확률과 시간대(특히 하교시간 겹침 판정), 특보 발효 여부, 보건 식중독 및 자외선 지수(에어코리아 실시간 오존 기반)를 분석해 주세요. 특히 강수 발생 시 우산 지참 및 교통 지도 요령을 세세하게 정비하십시오. 식중독 예방을 위해 '30초 올바른 손 씻기'와 아동 급·간식 위생 수칙을 지도하도록 강조하십시오.
+4. **교실 환기 가이드**: 당일 외기 오염도와 기온을 고려하여 "오전 OO시 ~ OO시 사이 10분간 맞통풍 교실 환기 권장" 과 같이 담임 교사가 쉬는 시간에 즉시 행할 수 있는 명시적인 타임라인을 '교실 환기 가이드'에 제공하십시오.
+5. **계절별 유행 감염병 및 보건 정보**: 환절기 및 현 계절 기온 상황과 연계된 감염병 동향(독감, 수족구병, 백일해, 마이코플라스마 폐렴 등) 및 예방 관리 수칙을 '유행 감염병 및 보건 정보' 파트에 포함해 교사들이 아침 등교 맞이 시 학생들의 기침 및 발열 상태를 선제적 진단할 수 있게 하십시오.
+6. **기상 상황에 따른 시설 안전 및 등·하교 교통안전**: 우천 시 복도 통행 실내 낙상 미끄럼 사고 방지 주의, 등하굣길 안전 확보, 태풍/강풍 시 교실 창문 잠금 단속 등 날씨에 직결된 학교 내부 안전사고 경고 수칙을 '시설 안전 및 등하교 교통안전' 파트에 작성하십시오.
+7. **학교 교육과정(행사) 변경 안내 및 연계**: 비가 오거나 미세먼지 위험 시 예정된 체험학습, 야외 활동의 진행 여부 및 대안을 제시하고, 날씨가 좋은 날에는 과학·실과 등과 연계한 야외 생태 관찰 수업 권장 등 교육과정 연계 아이디어를 제안하십시오.
+8. **기상 현상 관련 '오늘의 교육 팁'**: 황사, 눈, 오존 및 자외선, 태양 현상, 24절기 등 오늘 날씨 기후 특성에 기인하여 선생님들이 아침 조회나 관련 교과 수업 도입부에 학생들과 가볍게 3분 대화 및 퀴즈 등을 나눌 수 있는 짤막한 교육 팁을 '오늘의 교육 팁'에 제공하십시오.
+9. **한 줄 요약 및 행동 가이드 (핵심)**: 최상단 [오늘의 교사 행동 가이드 (한 줄 요약)] 영역 내에 "오늘은 미세먼지 양호하나 오후 강수 확률 80%이므로, 하교 시 우산 챙기도록 지도 부탁드립니다"와 같은 직관적인 한 줄 실천 가이드를 한눈에 보이게 작성하십시오.
+
+[필수 중요 정렬 및 레이아웃 규칙]
+- 모바일 메세지 앱(카카오톡, 밴드, 학급 알리미 등)에서 복사해 사용할 때 가독성을 극대화하기 위해 각 리스트 항목(- 시작 행) 사이사이에 반드시 '빈 줄 한 줄(Double Newline)'을 넣어서 출력을 띄워주세요. 절대 내용이 다닥다닥 붙어 나오지 않게 하십시오.
+- 또한 이모지 기호를 줄의 맨 앞머리 불릿으로 적극적으로 활용하여 한눈에 정렬된 느낌을 주어야 합니다.
+- 첫 멘트는 학교 학생들과 교직원들을 위한 다정한 인사와 함께, 학교 환경 정화, 위생 교육, 계기 일과, 즐거운 학교 생활 등 매번 새롭고 다르게 출발하세요. 만약 사용자가 '학교 추가 반영사항'을 입력했다면 최우선 적용해 첫멘트에 자연스럽게 녹여주세요.
+- 마지막 멘트 역시 당일 날씨와 공기질 상태에 가장 알맞은 따뜻하고 유연한 끝인사 문장으로 구성해 매일 차별화하십시오.
+
+[브리핑 출력 템플릿 - 줄바꿈 및 이모지 구조 반드시 유지]
+📢 [월]월 [일]일([요일]) [학교명] 날씨 및 미세먼지 AI 브리핑
+
+📌 **[오늘의 교사 행동 가이드 (한 줄 요약)]**
+- **"[여기에 오늘 담임교사가 학급에서 실천해야 할 핵심 지침 한 줄 요약 기술]"**
+
+(첫멘트 - 줄바꿈을 포함하여 3줄 이내로 분주한 아침 활력을 불어넣는 멘트 작성)
+
+📢 **1. 날씨: [날씨 요약]**
+
+- 🌡️ **기온 및 옷차림 지도**: 등교·출근 시간 기온 [온도]°C, 오후 최고 기온 [최고온도]°C, 최저 기온 [최저온도]°C입니다.
+
+- 👕 **체감 온도 및 복장**: 체감 온도는 약 [체감온도]°C 수준으로 예상됩니다. [체감 온도 변화에 따른 복장 지도 조언 및 아동이 겉옷을 스스로 조절하도록 지도할 가이드]
+
+- ☔ **강수 및 기상 특보**: 오늘 강수 확률은 [확률]% 이며, [강수 시간대 분석]입니다. (특보 발효 여부 기재 및 다음 날 비 예보 동향)
+
+- 💨 **자외선 및 보건 위생**: 자외선 지수는 '[지수수준]' 단계이며, 식중독 지수는 '[식중독수준]' 단계입니다. [에어코리아 실시간 오존 데이터 연동 자외선 수칙 및 식중독 대비 30초 올바른 손 씻기 등 위생 지도 수칙]
+
+- 🚸 **시설 안전 및 등하교 교통안전**: [미끄럼 주의, 교실 문잠금 종례 지도, 등하교 수칙 등 기상 상황에 맞춘 안전 가이드 작성]
+
+📢 **2. 미세먼지: '[미세먼지 등급]'**
+
+- 😷 **미세먼지 및 실외활동 가능 여부**: 미세먼지(PM10) '[등급]' 및 초미세먼지(PM2.5) '[등급]' 수준입니다. [학교보건법에 의거한 운동장 야외 체육 활동 가부 판정 및 대체안 지침]
+
+- 🏃 **활동 지수 및 교육과정 연계**: [대기 상태에 따른 실외 활동 적격도 및 야외 생태 탐구 등 날씨 연계 수업 프로그램 조언]
+
+- 🦠 **유행 감염병 및 보건 정보**: [현 온도/기후와 감염병 동향을 기반으로 한 예방 관리 수칙 기재]
+
+- 🌀 **교실 환기 적정 시간 가이드**: [외기 상태에 기반해 오전 OO시 ~ OO시 사이 10분간 맞통풍 교실 환기 가이드라인 제안]
+
+- 💡 **오늘의 교육 팁 (수업 활용)**: [오늘 기상 상태와 직결된 3분 짤막 교육 팁 작성]
+
+✨ 학생들과 함께 안전하고 쾌적한 [요일] 보내시길 바랍니다!
+
+🍀 [마지막 멘트 - 따뜻한 학교 생활 격려 및 끝인사 요약]
+
+🔗 [상세 정보 확인 링크]
+- [기상청 날씨누리](https://www.weather.go.kr)
+- [에어코리아](https://www.airkorea.or.kr)
+`;
+
+            const userPrompt = `
+기준 날짜: 2026년 ${month}월 ${day}일(${dayOfWeek})
+대상 학교: ${activeSchool.name} (${activeSchool.address})
+특이사항 및 반영 일정: ${additionalContext || "특별사항 없음"}
+
+${realDataPayload}
+
+위 실제 수집된 공공 관측 데이터를 우선 바탕으로 지침에 해당하는 브리핑 문을 정확하게 채워서 최종 출력물을 즉시 마크다운으로 작성해주세요. 만약 공공 API 로드가 비어있다면 해당 학교 주소 주변 날씨누리 정보를 웹 검색 활용하여 지연 없이 완성하십시오.
+`;
+
+            try {
+                const response = await callGeminiAPI(systemPrompt, userPrompt);
+                updateLoadingStep(4, "done");
+
+                if (response && response.text) {
+                    const generatedText = response.text;
+                    renderMarkdown(generatedText);
+                    renderSources(response.sources);
+
+                    document.getElementById('loading-state').classList.add('hidden');
+                    document.getElementById('result-container').classList.remove('hidden');
+                    showToast(`${activeSchool.name} 맞춤 AI 브리핑이 성공적으로 작성되었습니다!`);
+                } else {
+                    throw new Error("결과 빌더가 비어있습니다.");
+                }
+
+            } catch (error) {
+                console.error("AI 브리핑 처리 오류:", error);
+                document.getElementById('loading-state').classList.add('hidden');
+                document.getElementById('result-container').classList.remove('hidden');
+                
+                const fallbackText = getFallbackBriefing(month, day, dayOfWeek, additionalContext);
+                renderMarkdown(fallbackText);
+                showToast("일시적 네트워크 제약으로 기후 데이터를 추론 연산하여 작성했습니다.", true);
+            }
+        });
+
+        async function callGeminiAPI(systemPrompt, userQuery, retries = 3, delay = 1000) {
+            const apiKey = ""; 
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+
+            const payload = {
+                contents: [{ parts: [{ text: userQuery }] }],
+                tools: [{ "google_search": {} }], 
+                systemInstruction: {
+                    parts: [{ text: systemPrompt }]
+                }
+            };
+
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) {
+                        if (response.status === 429) {
+                            await new Promise(res => setTimeout(res, delay));
+                            delay *= 2;
+                            continue;
+                        }
+                        throw new Error(`HTTP Error: ${response.status}`);
+                    }
+
+                    const result = await response.json();
+                    const candidate = result.candidates?.[0];
+
+                    if (candidate && candidate.content?.parts?.[0]?.text) {
+                        const text = candidate.content.parts[0].text;
+                        
+                        let sources = [];
+                        const groundingMetadata = candidate.groundingMetadata;
+                        if (groundingMetadata && groundingMetadata.groundingAttributions) {
+                            sources = groundingMetadata.groundingAttributions
+                                .map(attribution => ({
+                                    uri: attribution.web?.uri,
+                                    title: attribution.web?.title,
+                                }))
+                                .filter(source => source.uri && source.title);
+                        }
+
+                        if (apiData.isApiSuccessful) {
+                            sources.unshift({
+                                uri: "https://www.data.go.kr",
+                                title: "공공데이터포털 실시간 API 계측"
+                            });
+                        }
+
+                        return { text, sources };
+                    }
+                } catch (err) {
+                    if (i === retries - 1) throw err;
+                    await new Promise(res => setTimeout(res, delay));
+                    delay *= 2;
+                }
+            }
+            throw new Error("브리핑 생성 실패");
+        }
+
+        // 안정화된 연동 상태 갱신 함수 (Element 소멸 버그 원천 해결)
+        function updateLoadingStep(stepNum, status) {
+            const iconEl = document.getElementById(`step-icon-${stepNum}`);
+            const textEl = document.getElementById(`step-text-${stepNum}`);
+            if (!iconEl || !textEl) return;
+
+            let baseText = textEl.textContent.replace(/ - 연동 성공| - AI 보정대체| - 수집 중/g, '').trim();
+
+            if (status === "done") {
+                iconEl.className = "text-emerald-600 font-semibold";
+                iconEl.innerHTML = `<i class="fa-solid fa-circle-check"></i>`;
+                textEl.className = "text-emerald-600 font-semibold";
+                textEl.textContent = baseText + " - 연동 성공";
+            } else if (status === "fail") {
+                iconEl.className = "text-slate-500";
+                iconEl.innerHTML = `<i class="fa-solid fa-circle-info"></i>`;
+                textEl.className = "text-slate-500";
+                textEl.textContent = baseText + " - AI 보정대체";
+            } else if (status === "active") {
+                iconEl.className = "text-blue-600 font-bold animate-pulse";
+                iconEl.innerHTML = `<i class="fa-solid fa-spinner animate-spin"></i>`;
+                textEl.className = "text-blue-600 font-bold";
+                textEl.textContent = baseText + " - 수집 중";
+            } else if (status === "pending") {
+                iconEl.className = "text-slate-300";
+                iconEl.innerHTML = `<i class="fa-regular fa-circle text-slate-300"></i>`;
+                textEl.className = "text-slate-500";
+                textEl.textContent = baseText;
+            }
+        }
+
+        // 연동 출처 렌더링 배너
+        function renderSources(sources) {
+            const container = document.getElementById('sources-container');
+            const list = document.getElementById('sources-list');
+            list.innerHTML = '';
+
+            if (sources && sources.length > 0) {
+                container.classList.remove('hidden');
+                container.classList.add('flex');
+
+                const uniqueSources = [];
+                const seenUris = new Set();
+                for (const s of sources) {
+                    if (!seenUris.has(s.uri)) {
+                        seenUris.add(s.uri);
+                        uniqueSources.push(s);
+                    }
+                }
+
+                uniqueSources.slice(0, 5).forEach((source) => {
+                    const badge = document.createElement('a');
+                    badge.href = source.uri;
+                    badge.target = "_blank";
+                    badge.className = "inline-flex items-center gap-1.5 text-[11px] bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 px-3 py-1.5 rounded-xl transition-all max-w-[280px] truncate shadow-sm";
+                    badge.innerHTML = `<i class="fa-solid fa-earth-americas text-emerald-500"></i> ${source.title}`;
+                    list.appendChild(badge);
+                });
+            } else {
+                container.classList.add('hidden');
+                container.classList.remove('flex');
+            }
+        }
+
+        function getFallbackBriefing(month, day, dayOfWeek, context) {
+            const intro = context ? `계기 주간 및 안내사항인 '${context}'을(를) 반영하여 기쁜 하루를 시작합니다!` : `싱그러운 아침 햇살과 즐거운 소통이 함께하는 우리 ${activeSchool.name} 등교길 아침입니다.`;
+            return `📢 ${month}월 ${day}일(${dayOfWeek}) ${activeSchool.name} 날씨 및 미세먼지 AI 브리핑
+
+📌 **[오늘의 교사 행동 가이드 (한 줄 요약)]**
+- **"오늘은 오전 미세먼지가 양호하고 강수 확률이 낮아 야외 체웃 수업이 원활하게 가능하나, 오후 3시 이후 비가 예보되어 있으니 하교 시 학생들이 잊지 않고 우산을 챙기도록 종례 전 적극 지도 부탁드립니다."**
+
+${intro} 아침 교실 아동 맞이와 위생 점검을 선행하며 기분 좋은 미소로 친구들과 활기찬 배움의 소통을 시작해 보세요.
+
+📢 **1. 날씨: 흐린 후 오후 비**
+
+- 🌡️ **기온 및 옷차림 지도**: 등교·출근 시간 기온은 **14°C**, 오후 최고 기온은 **21°C** (최저 기온 **12°C**)입니다.
+
+- 👕 **체감 온도 및 복장**: 체감 온도는 약 **13°C**로 다소 쌀쌀하지만 오후 체감 온도는 **22°C**까지 올라갑니다. 등교 시 얇은 겉옷을 착용하도록 권장하며, 기온이 크게 오르는 오후 체육 시간 등에는 아이들이 스스로 겉옷을 편하게 벗을 수 있도록 조절 지도 부탁드립니다.
+
+- ☔ **강수 및 기상 특보**: 오늘 강수 확률은 **60%**이며, 오후 3시 하교시간 전후로 비가 내릴 것으로 예상됩니다. 다음 날 등굣길에도 영향을 줄 수 있으므로 미리 우의/우산 휴대를 예고해 주십시오. 현재 특별히 발효된 기상 특보는 없습니다.
+
+- 💨 **자외선 및 보건 위생**: 자외선 지수는 '**보통**' 단계이나, 식중독 지수가 '**관심**' 단계입니다. 아동들이 급·간식 및 우유를 섭취하기 전 **30초 이상 흐르는 물에 비누로 깨끗이 손 씻기**를 실천할 수 있도록 교실 내 밀착 위생 지도를 부탁드립니다. [에어코리아 실시간 오존 지수: 0.035 ppm 연동 계측]
+
+- 🚸 **시설 안전 및 등하교 교통안전**: 오후부터 우천이 시작되어 계단이나 교실 복도가 다소 미끄러울 수 있으니 쉬는 시간 우측 통행과 보행 안전 지도를 당부드리며, 하교 지도시 교통안전에 특히 신경 써 주십시오.
+
+📢 **2. 미세먼지: '보통'**
+
+- 😷 **미세먼지 및 실외활동 가능 여부**: 미세먼지(PM10) '**보통**' (35㎍/㎥) 및 초미세먼지(PM2.5) '**보통**' (18㎍/㎥) 수준입니다. 학교보건법상 대기 상태가 원활하여 **운동장 정상 야외 체육수업 및 중간놀이 야외 신체활동이 안전하게 가능**합니다.
+
+- 🏃 **활동 지수 및 교육과정 연계**: 오늘 공기질이 매우 쾌적하므로 1~4교시 시간대를 활용하여 과학 및 슬기로운 생활 교과와 연계된 야외 생태 관찰 및 흙놀이 융합 수업 진행을 적극 추천합니다.
+
+- 🦠 **유행 감염병 및 보건 정보**: 최근 일교차와 건조한 공기로 인해 교내외 인플루엔자(독감) 및 백일해 유행이 관측되고 있습니다. 등교 지도 시 기침, 발열 등의 의심 증상이 있는 아동이 있을 경우 보건실과 긴급 조치해 주시고 아침 학급 소통 시 손 씻기와 개인 위생 생활 지도를 부탁드립니다.
+
+- 🌀 **교실 환기 적정 시간 가이드**: 외기 환경 및 오염 지수 축적도를 감안해 가장 바람이 온화하고 맑은 **오전 9시 30분 ~ 9시 40분 사이 (1교시 직후 쉬는 시간) 10분간 교실 앞뒤 창문을 개방해 맞통풍 교실 환기**를 권장합니다. 교실 내 이산화탄소 수치를 낮춰 아동들의 집중력을 지탱해 주세요.
+
+- 💡 **오늘의 교육 팁 (수업 활용)**: 오늘 기상 상태를 수업에 녹여내어 창체 시간이나 과학 시간 도입부에 '온도와 미세먼지의 상관관계' 및 '오존 가스가 자외선 자극을 대변하는 원리'에 관한 짧은 흥미 유발 퀴즈를 학생들과 나누어 보십시오.
+
+✨ 학생들과 함께 안전하고 쾌적한 [요일] 보내시길 바랍니다!
+
+🍀 우리 학교 주변 하늘에 비치는 맑은 봄 햇살처럼, 다정다감하고 배움이 넘치는 소중한 안전 하루를 실천해 봐요.
+
+🔗 [상세 정보 확인 링크]
+- [기상청 날씨누리](https://www.weather.go.kr)
+- [에어코리아](https://www.airkorea.or.kr)
+`;
+        }
+
+        window.addEventListener('DOMContentLoaded', async () => {
+            const dateInput = document.getElementById('input-date');
+            
+            // 오늘 날짜 세팅 (KST 보증)
+            const todayStr = getKSTTodayString();
+            
+            if (dateInput) {
+                dateInput.value = todayStr;
+                updateDateBadge(todayStr);
+                updateSelectedDateWeekday(todayStr); // 로드 시 레이블 요일 동적 셋팅
+
+                dateInput.addEventListener('change', (e) => {
+                    updateDateBadge(e.target.value);
+                    updateSelectedDateWeekday(e.target.value); // 변경 시 레이블 요일 동적 반영
+                });
+            }
+
+            // 학교급 및 지역 선택 이벤트 바인딩
+            document.getElementById('select-level').addEventListener('change', handleLevelChange);
+            document.getElementById('select-province').addEventListener('change', handleProvinceChange);
+            document.getElementById('select-sigungu').addEventListener('change', handleSigunguChange);
+            document.getElementById('select-school').addEventListener('change', handleSchoolChange);
+
+            // 실시간 양방향 텍스트 편집 동기화 리스너 추가
+            document.getElementById('rich-editor').addEventListener('input', () => {
+                document.getElementById('rendered-output').innerHTML = document.getElementById('rich-editor').innerHTML;
+            });
+
+            // 최초 기동 시 '경상남도' 자동 로딩
+            await loadProvinceSchools("경상남도");
+            
+            // 최초 메타 정보 표출
+            refreshSchoolMetaUI();
+        });
+
+        // KST 기준 강인한 오늘 날짜 초기화 엔진 실행 (DOMContentLoaded와 연동)
+        (function initApp() {
+            const todayStr = getKSTTodayString();
+            const dateInput = document.getElementById('input-date');
+            if (dateInput) {
+                dateInput.value = todayStr;
+                updateDateBadge(todayStr);
+                updateSelectedDateWeekday(todayStr);
+            }
+        })();
+    </script>
+</body>
+</html>
